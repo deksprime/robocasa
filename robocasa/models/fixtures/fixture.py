@@ -108,8 +108,15 @@ class Fixture(MujocoXMLObjectRobocasa):
         if not xml.endswith(".xml"):
             xml = os.path.join(xml, "model.xml")
 
+        # Try built-in assets first, fall back to extensions
+        xml_resolved = xml_path_completion(xml, root=robocasa.models.assets_root)
+        if not os.path.isfile(xml_resolved) and os.path.isdir(robocasa.models.extensions_assets):
+            ext_path = os.path.join(robocasa.models.extensions_assets, xml)
+            if os.path.isfile(ext_path):
+                xml_resolved = ext_path
+
         super().__init__(
-            xml_path_completion(xml, root=robocasa.models.assets_root),
+            xml_resolved,
             name=name,
             joints=joints,
             duplicate_collision_geoms=duplicate_collision_geoms,

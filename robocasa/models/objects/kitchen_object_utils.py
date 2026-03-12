@@ -10,6 +10,7 @@ import robocasa
 from robocasa.models.objects.kitchen_objects import OBJ_CATEGORIES, OBJ_GROUPS
 
 BASE_ASSET_ZOO_PATH = os.path.join(robocasa.models.assets_root, "objects")
+_ASSET_ZOO_PATHS = robocasa.models.get_asset_paths("objects")
 
 
 class ObjCat:
@@ -109,30 +110,30 @@ class ObjCat:
         if model_folders is None:
             model_folders = ["{}/{}".format(reg_type, name)]
         cat_mjcf_paths = []
-        for folder in model_folders:
-            cat_path = os.path.join(BASE_ASSET_ZOO_PATH, folder)
-            if not os.path.exists(cat_path):
-                # skip if the asset path folder does not exist
-                continue
-            for model_name in os.listdir(cat_path):
-                model_dir = os.path.join(cat_path, model_name)
-                if not os.path.isdir(model_dir):
+        # Search both built-in and extension asset directories
+        for zoo_path in _ASSET_ZOO_PATHS:
+            for folder in model_folders:
+                cat_path = os.path.join(zoo_path, folder)
+                if not os.path.exists(cat_path):
                     continue
-                if self.is_auxiliary_obj:
-                    # auxiliary objects live one directory deeper
-                    for sub_name in os.listdir(model_dir):
-                        sub_dir = os.path.join(model_dir, sub_name)
-                        if os.path.isdir(sub_dir) and "model.xml" in os.listdir(
-                            sub_dir
-                        ):
+                for model_name in os.listdir(cat_path):
+                    model_dir = os.path.join(cat_path, model_name)
+                    if not os.path.isdir(model_dir):
+                        continue
+                    if self.is_auxiliary_obj:
+                        for sub_name in os.listdir(model_dir):
+                            sub_dir = os.path.join(model_dir, sub_name)
+                            if os.path.isdir(sub_dir) and "model.xml" in os.listdir(
+                                sub_dir
+                            ):
+                                if model_name in self.exclude:
+                                    continue
+                                cat_mjcf_paths.append(os.path.join(sub_dir, "model.xml"))
+                    else:
+                        if "model.xml" in os.listdir(model_dir):
                             if model_name in self.exclude:
                                 continue
-                            cat_mjcf_paths.append(os.path.join(sub_dir, "model.xml"))
-                else:
-                    if "model.xml" in os.listdir(model_dir):
-                        if model_name in self.exclude:
-                            continue
-                        cat_mjcf_paths.append(os.path.join(model_dir, "model.xml"))
+                            cat_mjcf_paths.append(os.path.join(model_dir, "model.xml"))
         self.mjcf_paths = sorted(cat_mjcf_paths)
 
     def get_mjcf_kwargs(self):
@@ -195,6 +196,58 @@ for (name, kwargs) in OBJ_CATEGORIES.items():
         OBJ_CATEGORIES[name]["lightwheel"] = ObjCat(
             name=name, reg_type="lightwheel", **lightwheel_kwargs
         )
+
+# Load extension object categories.
+# Extensions can define objects by placing YAML category definitions at:
+#   {extensions_root}/assets/objects/categories.yaml
+# Or simply by placing model.xml dirs under:
+#   {extensions_root}/assets/objects/{registry}/{category_name}/{model_name}/model.xml
+# Auto-discovered categories use "custom" registry type with default properties.
+_ext_objects_dir = os.path.join(robocasa.models.extensions_assets, "objects")
+if os.path.isdir(_ext_objects_dir):
+    import json as _json
+    import yaml as _yaml
+
+    # Load explicit category definitions if present
+    for _cfg_name in ("categories.yaml", "categories.json"):
+        _cfg_path = os.path.join(_ext_objects_dir, _cfg_name)
+        if os.path.isfile(_cfg_path):
+            with open(_cfg_path) as _f:
+                _ext_cats = _yaml.safe_load(_f) if _cfg_name.endswith(".yaml") else _json.load(_f)
+            for _name, _kwargs in (_ext_cats or {}).items():
+                if _name not in OBJ_CATEGORIES:
+                    OBJ_CATEGORIES[_name] = {}
+                    if _name not in OBJ_GROUPS.get("all", []):
+                        OBJ_GROUPS.setdefault("all", []).append(_name)
+                _reg = _kwargs.pop("reg_type", "custom")
+                OBJ_CATEGORIES[_name][_reg] = ObjCat(name=_name, reg_type=_reg, **_kwargs)
+
+    # Auto-discover: scan for registry dirs that contain category subdirs with model.xml
+    for _reg_name in os.listdir(_ext_objects_dir):
+        _reg_dir = os.path.join(_ext_objects_dir, _reg_name)
+        if not os.path.isdir(_reg_dir) or _reg_name.startswith(".") or _reg_name.endswith((".yaml", ".json")):
+            continue
+        for _cat_name in os.listdir(_reg_dir):
+            _cat_dir = os.path.join(_reg_dir, _cat_name)
+            if not os.path.isdir(_cat_dir):
+                continue
+            # Check if this category has any model.xml files
+            _has_models = any(
+                os.path.isfile(os.path.join(_cat_dir, m, "model.xml"))
+                for m in os.listdir(_cat_dir)
+                if os.path.isdir(os.path.join(_cat_dir, m))
+            )
+            if _has_models and _cat_name not in OBJ_CATEGORIES:
+                OBJ_CATEGORIES[_cat_name] = {}
+                OBJ_GROUPS.setdefault("all", []).append(_cat_name)
+            if _has_models and _reg_name not in OBJ_CATEGORIES.get(_cat_name, {}):
+                OBJ_CATEGORIES[_cat_name][_reg_name] = ObjCat(
+                    name=_cat_name,
+                    reg_type=_reg_name,
+                    types=("custom",),
+                    graspable=True,
+                    scale=1.0,
+                )
 
 
 def sample_kitchen_object(

@@ -991,6 +991,26 @@ except ImportError:
 
 from robocasa.environments import ALL_KITCHEN_ENVIRONMENTS
 
+# Auto-import extension environments so the metaclass registers them.
+# Extensions place Python files under {extensions_root}/environments/
+import robocasa.models as _models
+import importlib.util as _ilu
+import pathlib as _pathlib
+
+_ext_env_dir = _pathlib.Path(_models.extensions_root) / "environments"
+if _ext_env_dir.is_dir():
+    for _py in sorted(_ext_env_dir.rglob("*.py")):
+        if _py.name.startswith("_"):
+            continue
+        _mod_name = f"robocasa_ext.{_py.stem}"
+        try:
+            _spec = _ilu.spec_from_file_location(_mod_name, _py)
+            _mod = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(_mod)
+        except Exception as _e:
+            import warnings
+            warnings.warn(f"Failed to load extension environment {_py}: {_e}")
+
 # for gym environment compatibility
 from robocasa.wrappers.gym_wrapper import RoboCasaGymEnv
 

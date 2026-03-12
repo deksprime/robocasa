@@ -1,3 +1,4 @@
+import os
 from collections import OrderedDict
 from enum import IntEnum
 from robosuite.utils.mjcf_utils import xml_path_completion
@@ -175,11 +176,23 @@ def get_layout_path(layout_id):
     Get corresponding blueprint filepath (yaml) for a layout
 
     Args:
-        layout_id (int or LayoutType): layout id (int or enum)
+        layout_id (int or LayoutType or str): layout id.
+            Strings are looked up first in extensions, then built-in assets.
+            Use strings for custom layouts: e.g. "my_custom_kitchen"
 
     Return:
         str: yaml path for specified layout
     """
+    # String-based layout IDs — check extensions first, then built-in
+    if isinstance(layout_id, str):
+        for base in robocasa.models.get_asset_paths("scenes"):
+            # Check in layouts root, then test/train subdirs
+            for subdir in ["kitchen_layouts", "kitchen_layouts/train", "kitchen_layouts/test"]:
+                candidate = os.path.join(base, subdir, f"{layout_id}.yaml")
+                if os.path.isfile(candidate):
+                    return candidate
+        raise FileNotFoundError(f"Layout '{layout_id}' not found in assets or extensions")
+
     if (
         isinstance(layout_id, int)
         or isinstance(layout_id, np.int64)
@@ -208,11 +221,21 @@ def get_style_path(style_id):
     Get corresponding blueprint filepath (yaml) for a style
 
     Args:
-        style_id (int or StyleType): style id (int or enum)
+        style_id (int or StyleType or str): style id.
+            Strings are looked up first in extensions, then built-in assets.
 
     Return:
         str: yaml path for specified style
     """
+    # String-based style IDs — check extensions first, then built-in
+    if isinstance(style_id, str):
+        for base in robocasa.models.get_asset_paths("scenes"):
+            for subdir in ["kitchen_styles", "kitchen_styles/train", "kitchen_styles/test"]:
+                candidate = os.path.join(base, subdir, f"{style_id}.yaml")
+                if os.path.isfile(candidate):
+                    return candidate
+        raise FileNotFoundError(f"Style '{style_id}' not found in assets or extensions")
+
     if (
         isinstance(style_id, int)
         or isinstance(style_id, np.int64)
